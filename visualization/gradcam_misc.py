@@ -41,7 +41,7 @@ def save_gradient_images(gradient, file_name):
         Exports the original gradient image
 
     Args:
-        gradient (np arr): Numpy array of the gradient with shape (3, 224, 224)
+        gradient (np arr): Numpy array of the gradient
         file_name (str): File name to be exported
     """
     if not os.path.exists('./output'):
@@ -51,7 +51,7 @@ def save_gradient_images(gradient, file_name):
     gradient /= gradient.max()
 
     # Save image
-    path_to_file = os.path.join('./output/' + file_name + '.jpg')
+    path_to_file = os.path.join('./output/{}.jpg'.format(file_name))
     save_image(gradient, path_to_file)
 
 
@@ -70,15 +70,15 @@ def save_class_activation_images(org_img, activation_map, file_name):
     heatmap, heatmap_on_image = apply_colormap_on_image(org_img, activation_map, 'jet')
 
     # Save colored heatmap
-    path_to_file = os.path.join('./output/' + file_name+'_Cam_Heatmap.png')
+    path_to_file = os.path.join('./output/{}_Cam_Heatmap.png'.format(file_name))
     save_image(heatmap, path_to_file)
 
     # Save heatmap on iamge
-    path_to_file = os.path.join('./output/' + file_name+'_Cam_On_Image.png')
+    path_to_file = os.path.join('./output/{}_Cam_On_Image.png'.format(file_name))
     save_image(heatmap_on_image, path_to_file)
 
     # SAve grayscale heatmap
-    path_to_file = os.path.join('./output/' + file_name+'_Cam_Grayscale.png')
+    path_to_file = os.path.join('./output/{}_Cam_Grayscale.png'.format(file_name))
     save_image(activation_map, path_to_file)
 
 
@@ -160,7 +160,7 @@ def preprocess_image(pil_im):
     # Convert to float tensor
     im_as_ten = torch.from_numpy(im_as_arr).float()
 
-    # Add one more channel to the beginning. Tensor shape = 1,3,224,224
+    # Add one more channel to the beginning.
     im_as_ten.unsqueeze_(0)
 
     # Convert to Pytorch variable

@@ -53,11 +53,14 @@ def do_batch(model, inputs, labels, distribution,
 
 
 def do_epoch(loader, device, model, args, distribution,
-             lambda_, optimizer=None, get_predictions=False):
+             lambda_, optimizer=None, get_predictions=False, get_weight_grad_norms=False):
 
     running_totals = np.zeros(3 + 3 * args.n_modules)
     epoch_logits = np.zeros((args.n_modules, 0, model.output_dim))
     epoch_labels = np.zeros(0)
+
+    weight_norms = None
+    grad_norms = None
 
     for batch_i, (inputs, labels) in enumerate(loader):
         if get_predictions:
@@ -68,6 +71,14 @@ def do_epoch(loader, device, model, args, distribution,
         metrics, logits = do_batch(model, inputs, labels, distribution,
                                    args, lambda_, optimizer)
 
+        if get_weight_grad_norms:
+            if grad_norms is None:
+                weight_norms, grad_norms = model.weight_grad_norms()
+            else:
+                new_weight_norms, new_grad_norms = model.weight_grad_norms()
+                weight_norms = np.concatenate((weight_norms, new_weight_norms), axis=0)
+                grad_norms = np.concatenate((grad_norms, new_grad_norms), axis=0)
+
         running_totals += metrics
         if get_predictions:
             epoch_logits = np.concatenate(
@@ -77,14 +88,14 @@ def do_epoch(loader, device, model, args, distribution,
 
     epoch_labels = epoch_labels.astype(np.int64)
 
-    return running_totals / (batch_i + 1), epoch_logits, epoch_labels
+    return running_totals / (batch_i + 1), epoch_logits, epoch_labels, weight_norms, grad_norms
 
 
 def do_test_set(name, lambda_dir, test_loader, device, model, args,
                 distribution):
     model.train(mode=False)
 
-    metrics, logits, labels = do_epoch(test_loader, device, model, args,
+    metrics, logits, labels, _, _ = do_epoch(test_loader, device, model, args,
                                        distribution, 1.0,
                                        optimizer=None,
                                        get_predictions=True)
@@ -116,27 +127,25 @@ def do_lambda_value(model, lambda_, learning_rate, args, loaders,
     min_val_error = np.inf
     epochs_since_improvement = 0
 
-    weight_norms = None
-    grad_norms = None
+    weight_norms_list = []
+    grad_norms_list = []
 
     for epoch in range(args.epochs):
+
         for split_i, split in enumerate(['train', 'valid']):
 
             # Switch between training and evaluation modes
             # e.g., for dropout or batch norm layers
             model.train(mode=(split=='train'))
-            metrics, _, _ = do_epoch(loaders[split], device, model, args,
-                                     distribution, lambda_,
-                                     optimizer=optimizers[split])
+            metrics, _, _, weight_norms, grad_norms = do_epoch(loaders[split], device, model, args,
+                                                               distribution, lambda_,
+                                                               optimizer=optimizers[split],
+                                                               get_weight_grad_norms=True if split=='train' else False)
             results[epoch, split_i, :] = metrics
 
             if split=='train':
-                if grad_norms is None:
-                    weight_norms, grad_norms = model.weight_grad_norms()
-                else:
-                    new_weight_norms, new_grad_norms = model.weight_grad_norms()
-                    weight_norms = np.concatenate((weight_norms, new_weight_norms), axis=0)
-                    grad_norms = np.concatenate((grad_norms, new_grad_norms), axis=0)
+                weight_norms_list.append(weight_norms)
+                grad_norms_list.append(grad_norms)
 
         # If we're doing classification, use the validation error for early
         # stopping. Else use the loss.
@@ -199,7 +208,11 @@ def do_lambda_value(model, lambda_, learning_rate, args, loaders,
         test_results[0, :] = do_test_set("early_stop", output_dir, loaders['test'],
                                          device, model, args, distribution)
     np.save(os.path.join(lambda_dir, 'test_results'), test_results)
+
+    weight_norms = np.stack(weight_norms_list)  # [epoch, batch, module, layer, w/b]
     np.save(os.path.join(lambda_dir, 'weight_norms'), weight_norms)
+
+    grad_norms = np.stack(grad_norms_list)  # [epoch, batch, module, layer, w/b]
     np.save(os.path.join(lambda_dir, 'gradient_norms'), grad_norms)
 
 
