@@ -8,6 +8,7 @@ import torchvision
 import numpy as np
 import torch.nn.functional as F
 import models
+import matplotlib.pyplot as plt
 from torchvision.transforms import transforms
 
 parser = argparse.ArgumentParser()
@@ -62,15 +63,23 @@ def test_with_some_modules_removed(model, testloader, keep):
             total += labels.size(0)
             correct += torch.sum(pred_bar == labels)
         acc = correct.data.cpu().numpy() / total
-        print("With Modules {}, the test accuracy is {}".format(keep, acc))            
+        print("With Modules {}, the test accuracy is {}".format(keep, acc))
+    return acc            
     
 if __name__ == "__main__":
     model = get_model()
     testloader = get_testset()
     keep = list(range(args.n_modules))
+    acc = []
+    xxx = list(reversed(range(1, args.n_modules+1)))
     for i in range(args.n_modules):
-        test_with_some_modules_removed(model, testloader, keep)
+        acc.append(test_with_some_modules_removed(model, testloader, keep))
         if len(keep) <= 1:
             break
         else:
             keep.remove(args.drop_order[i])
+    plt.plot(xxx, acc)
+    plt.xlabel("Number of modules in the ensemble")
+    plt.ylabel("Test accuracy")
+    plt.title("Each time we drop one module whose weight has the smallest displacement between the starting and end points")
+    plt.show()
